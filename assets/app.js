@@ -1,4 +1,23 @@
 const $ = (id) => document.getElementById(id);
+');
+}
+
+
+async function onScan(txt){
+if(!txt || txt===state.lastText) return;
+state.lastText = txt;
+const meta = detectType(txt);
+$('result').textContent = txt;
+$('meta').textContent = 'Tipe: ' + meta.type;
+updateHistory(new Date().toLocaleString(), txt);
+
+
+if($('autoSave').checked){ await saveToSheets(txt, meta.type) }
+if($('vibrate').checked && 'vibrate' in navigator){ navigator.vibrate(80) }
+}
+
+
+async function getGeo(){
 return new Promise((resolve)=>{
 if(!navigator.geolocation) return resolve(null)
 navigator.geolocation.getCurrentPosition(
