@@ -1,0 +1,77 @@
+<!doctype html>
+</header>
+
+
+<div class="wrap grid">
+<section class="card" style="padding:16px">
+<div class="grid" style="grid-template-columns:1fr">
+<div class="row" style="gap:12px">
+<div style="flex:1">
+<label>Nama/Kode Pameran</label>
+<input id="exhibition" placeholder="Mis. INDO-MFG 2025 / Booth B12" />
+</div>
+<div style="flex:1">
+<label>Lokasi/Area (opsional)</label>
+<input id="venue" placeholder="Hall A / Jakarta" />
+</div>
+</div>
+
+
+<div class="row" style="gap:12px">
+<div style="flex:2">
+<label>Kamera</label>
+<select id="cameraSelect"></select>
+</div>
+<div style="flex:1;align-self:end">
+<button id="btnStart" class="primary">Mulai Kamera</button>
+</div>
+<div style="flex:1;align-self:end">
+<button id="btnStop" class="ghost" disabled>Stop</button>
+</div>
+</div>
+
+
+<video id="video" playsinline></video>
+<canvas id="canvas" class="hidden"></canvas>
+
+
+<div class="row" style="gap:12px">
+<label class="row" style="gap:8px;align-items:center;width:auto"><input type="checkbox" id="autoSave" checked /> Auto-save</label>
+<label class="row" style="gap:8px;align-items:center;width:auto"><input type="checkbox" id="vibrate" checked /> Getar saat sukses</label>
+<button id="btnSave" disabled>Simpan Manual</button>
+<button id="btnSync" class="ghost">Sync Queue</button>
+</div>
+</div>
+</section>
+
+
+<section class="card" style="padding:16px">
+<div class="grid" style="grid-template-columns:1fr">
+<div>
+<label>Hasil Terakhir</label>
+<pre id="result">— belum ada —</pre>
+<div class="row" style="gap:8px">
+<button id="btnCopy" class="ghost">Copy</button>
+<span id="meta" class="badge">Tipe: -</span>
+</div>
+</div>
+<div>
+<label>Riwayat (sesi ini)</label>
+<pre id="history">(kosong)</pre>
+</div>
+</div>
+</section>
+</div>
+
+
+<div class="footer">Ditenagai ZXing + WebRTC · Gunakan koneksi HTTPS untuk akses kamera</div>
+
+
+<!-- ZXing (CDN) -->
+<script src="https://unpkg.com/@zxing/library@latest"></script>
+<!-- Konfigurasi endpoint (edit file ini) -->
+<script src="../assets/config.js"></script>
+<!-- Aplikasi utama -->
+<script src="../assets/app.js" defer></script>
+</body>
+</html>
