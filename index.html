@@ -1,4 +1,11 @@
 <!doctype html>
+<body>
+<header>
+<h1>QR → Google Sheets</h1>
+<div class="row" style="justify-content:center">
+<span id="statusBadge" class="badge">Status: <strong>idle</strong></span>
+<span id="queueBadge" class="badge">Queue: 0</span>
+</div>
 </header>
 
 
@@ -70,8 +77,8 @@
 <!-- ZXing (CDN) -->
 <script src="https://unpkg.com/@zxing/library@latest"></script>
 <!-- Konfigurasi endpoint (edit file ini) -->
-<script src="../assets/config.js"></script>
+<script src="./assets/config.js"></script>
 <!-- Aplikasi utama -->
-<script src="../assets/app.js" defer></script>
+<script src="./assets/app.js" defer></script>
 </body>
 </html>
