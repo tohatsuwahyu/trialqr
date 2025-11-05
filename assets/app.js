@@ -1,4 +1,4 @@
-// app.js — ZXing (QR), Quagga2 (1D), fast camera start, torch/zoom, dashboard, JSONP fallback
+// app.js — ZXing (QR), Quagga2 (1D), ROI overlay, fast start, torch/zoom, dashboard, JSONP fallback
 
 const $ = (id) => document.getElementById(id);
 const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
@@ -7,47 +7,67 @@ const ENDPOINT = (window.APP_CONFIG && window.APP_CONFIG.ENDPOINT) || "";
 const state = {
   stream: null,
   codeReader: null,   // ZXing
-  usingQuagga: false, // 1D mode
+  usingQuagga: false, // 1D mode flag
   lastText: null,
   scanning: false,
   queue: loadQueue(),
   chart: null
 };
 
-// ---------- queue & ui ----------
+// ---------- queue & ui helpers ----------
 function loadQueue(){ try{ return JSON.parse(localStorage.getItem("qr_queue")||"[]") }catch(e){ return [] } }
 function saveQueue(){ localStorage.setItem("qr_queue", JSON.stringify(state.queue)) }
 function setStatus(text, cls){ const b=$("statusBadge"); if(!b) return; b.innerHTML=`ステータス: <strong>${text}</strong>`; b.className='badge '+(cls||''); }
 function setQueueBadge(){ const el=$("queueBadge"); if(!el) return; el.innerText='キュー: '+state.queue.length; }
 
-// ---------- ZXing (QR + can 1D) ----------
+// ---------- overlay (ROI/debug) ----------
+function clearOverlay(){
+  const c = $("overlay"); if(!c) return;
+  const ctx = c.getContext('2d'); ctx.clearRect(0,0,c.width,c.height);
+}
+function resizeOverlayToVideo(){
+  const v = $("video"), c = $("overlay"); if(!v || !c) return;
+  const rect = v.getBoundingClientRect(); c.width = rect.width; c.height = rect.height;
+}
+function drawBoxes(boxes, line){
+  const c = $("overlay"); if(!c) return; const ctx = c.getContext('2d'); ctx.lineWidth=2;
+
+  ctx.strokeStyle='rgba(255,200,0,0.85)';
+  (boxes||[]).forEach(b=>{ ctx.beginPath(); b.forEach((p,i)=> i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.closePath(); ctx.stroke(); });
+
+  if(line){
+    ctx.strokeStyle='rgba(0,200,120,0.9)';
+    ctx.beginPath(); ctx.moveTo(line[0].x,line[0].y); ctx.lineTo(line[1].x,line[1].y); ctx.stroke();
+  }
+
+  // visual ROI band (optional)
+  const w=c.width,h=c.height; ctx.strokeStyle='rgba(255,0,0,0.35)'; ctx.lineWidth=1.5;
+  const top = h*0.35, bottom=h*0.65, left=w*0.10, right=w*0.90;
+  ctx.strokeRect(left, top, right-left, bottom-top);
+}
+
+// ---------- ZXing (QR) ----------
 const ZX_FORMATS = [
   ZXing.BarcodeFormat.QR_CODE,
-  ZXing.BarcodeFormat.CODE_128,
-  ZXing.BarcodeFormat.CODE_39,
-  ZXing.BarcodeFormat.CODE_93,
-  ZXing.BarcodeFormat.EAN_13,
-  ZXing.BarcodeFormat.EAN_8,
-  ZXing.BarcodeFormat.UPC_A,
-  ZXing.BarcodeFormat.UPC_E,
-  ZXing.BarcodeFormat.ITF,
-  ZXing.BarcodeFormat.CODABAR
+  ZXing.BarcodeFormat.CODE_128, ZXing.BarcodeFormat.CODE_39, ZXing.BarcodeFormat.CODE_93,
+  ZXing.BarcodeFormat.EAN_13, ZXing.BarcodeFormat.EAN_8,
+  ZXing.BarcodeFormat.UPC_A, ZXing.BarcodeFormat.UPC_E,
+  ZXing.BarcodeFormat.ITF, ZXing.BarcodeFormat.CODABAR
 ];
 function zxHints(){ const h=new Map(); h.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, ZX_FORMATS); h.set(ZXing.DecodeHintType.TRY_HARDER,true); return h; }
 function getFormatNameZX(res){ try{ if(res.getBarcodeFormat) return String(res.getBarcodeFormat()); }catch(_){ } return 'UNKNOWN'; }
 
-// ---------- Quagga (1D only) ----------
+// ---------- Quagga (1D) ----------
 const QG_READERS = [
   "code_128_reader","code_39_reader","code_39_vin_reader","code_93_reader",
   "ean_reader","ean_8_reader","upc_reader","upc_e_reader",
   "i2of5_reader","codabar_reader"
 ];
 function getFormatNameQG(name){
-  // normalize to upper-case-ish
   return (name||'').toUpperCase().replace('_READER','').replace('I2OF5','ITF').replace('EAN','EAN_').replace('UPC','UPC_');
 }
 
-// ---------- constraints & camera ----------
+// ---------- constraints ----------
 const BASE_CONSTRAINTS_ENV = {
   video: {
     facingMode: { ideal: 'environment' },
@@ -57,6 +77,7 @@ const BASE_CONSTRAINTS_ENV = {
   }
 };
 
+// ---------- device list ----------
 async function listCameras(){
   const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput');
   const sel = $("cameraSelect"); if(!sel) return;
@@ -65,6 +86,7 @@ async function listCameras(){
   if(devs.length===0){ const o=document.createElement('option'); o.text='（カメラが見つかりません）'; sel.appendChild(o) }
 }
 
+// ---------- start/stop ----------
 async function startCamera(){
   stopCamera();
   setStatus(isMobile ? 'カメラ(背面)を起動中…' : 'カメラを起動中…');
@@ -74,22 +96,21 @@ async function startCamera(){
 
   try{
     if(use1D){
-      // Quagga owns the stream internally
       await startQuagga();
     }else{
-      // ZXing path (good for QR, also tries 1D)
       if(isMobile){
-        try {
-          await startZXingWithConstraints({ video: { ...BASE_CONSTRAINTS_ENV.video, facingMode:{ exact:'environment' } } });
-        } catch(_) {
-          await startZXingWithConstraints(BASE_CONSTRAINTS_ENV);
-        }
+        try { await startZXingWithConstraints({ video: { ...BASE_CONSTRAINTS_ENV.video, facingMode:{ exact:'environment' } } }); }
+        catch(_) { await startZXingWithConstraints(BASE_CONSTRAINTS_ENV); }
       }else{
         const deviceId = $("cameraSelect")?.value || undefined;
         await startZXingWithDevice(deviceId);
       }
-      await tuneTrackCapabilities(); // torch/zoom/autofocus for ZXing stream
+      await tuneTrackCapabilities(); // torch/zoom/AF
     }
+
+    setTimeout(resizeOverlayToVideo, 150);
+    window.addEventListener('resize', resizeOverlayToVideo);
+
     setStatus('スキャン準備OK','ok');
     $("btnStart").disabled = true; $("btnStop").disabled = false;
   }catch(e){
@@ -99,16 +120,16 @@ async function startCamera(){
 }
 
 function stopCamera(){
-  if(state.usingQuagga){ try{ Quagga.stop(); }catch(_){ } }
-  if(state.stream){ try{ state.stream.getTracks().forEach(t=>t.stop()); }catch(_){ } state.stream=null; }
-  if(state.scanning && state.codeReader){ try{ state.codeReader.reset(); }catch(_){ } }
-  state.scanning=false; state.usingQuagga=false;
+  try{ if(state.usingQuagga) Quagga.stop(); }catch(_){}
+  try{ if(state.stream) state.stream.getTracks().forEach(t=>t.stop()); }catch(_){}
+  state.stream=null; state.scanning=false; state.usingQuagga=false;
+  try{ if(state.codeReader) state.codeReader.reset(); }catch(_){}
   $("btnStart").disabled=false; $("btnStop").disabled=true;
   $("btnTorch").style.display='none'; $("zoomWrap").style.display='none';
-  setStatus('待機中');
+  clearOverlay(); setStatus('待機中');
 }
 
-// ---- ZXing pipelines ----
+// ---------- ZXing paths ----------
 async function startZXingWithConstraints(constraints){
   state.scanning = true;
   const reader = new ZXing.BrowserMultiFormatReader(zxHints());
@@ -116,7 +137,11 @@ async function startZXingWithConstraints(constraints){
 
   state.stream = await navigator.mediaDevices.getUserMedia(constraints);
   const video = $("video");
-  if(video){ video.srcObject=state.stream; video.playsInline=true; if(video.paused) video.play().catch(()=>{}); }
+  if(video){
+    video.srcObject = state.stream; video.playsInline = true;
+    if(video.paused) video.play().catch(()=>{});
+    setTimeout(resizeOverlayToVideo, 120);
+  }
 
   await reader.decodeFromConstraints(constraints, 'video', (res)=>{
     if(res){ onScan(res.getText(), getFormatNameZX(res)); }
@@ -133,13 +158,15 @@ async function startZXingWithDevice(deviceId){
     (res)=>{ if(res){ onScan(res.getText(), getFormatNameZX(res)); } },
     { video:{ deviceId: deviceId ? { exact: deviceId } : undefined, width:{ideal:1280}, height:{ideal:720}, frameRate:{ideal:30,max:30} } }
   );
+
+  setTimeout(resizeOverlayToVideo, 120);
 }
 
-// Torch/Zoom/AF (ZXing path only)
+// torch/zoom/AF (ZXing stream only)
 async function tuneTrackCapabilities(){
   if(!state.stream) return;
   const track = state.stream.getVideoTracks()[0]; if(!track) return;
-  const caps = track.getCapabilities?.() || {}, settings = track.getSettings?.() || {};
+  const caps = track.getCapabilities?.() || {}; const settings = track.getSettings?.() || {};
 
   if(caps.focusMode && caps.focusMode.includes('continuous')){
     try{ await track.applyConstraints({ advanced:[{ focusMode:'continuous' }] }); }catch(_){}
@@ -165,39 +192,53 @@ async function tuneTrackCapabilities(){
   }
 }
 
-// ---- Quagga pipelines (1D専用) ----
+// ---------- Quagga (1D専用, ROI band) ----------
 async function startQuagga(){
   return new Promise((resolve, reject)=>{
     try{
+      const area = { top: "35%", right: "10%", left: "10%", bottom: "35%" }; // ROI tengah
+
       Quagga.init({
         inputStream: {
           type: "LiveStream",
-          target: $("video"), // gunakan elemen video kita
-          constraints: {
-            facingMode: "environment",
-            width:  { ideal: 1280 },
-            height: { ideal: 720  }
-          }
+          target: $("video"),
+          constraints: { facingMode: "environment", width:{ideal:1280}, height:{ideal:720} },
+          area
         },
-        locator: { patchSize: "medium", halfSample: true },
+        locator: { patchSize: "large", halfSample: false },
+        locate: true,
         numOfWorkers: navigator.hardwareConcurrency ? Math.max(1, Math.min(4, navigator.hardwareConcurrency-1)) : 2,
-        frequency: 10,
-        decodeBarcodes: true,
-        decoder: { readers: QG_READERS }
-      }, async (err)=>{
+        frequency: 15,
+        decoder: { readers: QG_READERS, multiple: false }
+      }, (err)=>{
         if(err){ console.error(err); reject(err); return; }
         state.usingQuagga = true;
         Quagga.start();
-        setTimeout(resolve, 100); // beri waktu start
+        setTimeout(()=>{ resizeOverlayToVideo(); resolve(); }, 150);
+      });
+
+      Quagga.onProcessed((result)=>{
+        clearOverlay(); if(!result) return;
+        const v=$("video"), c=$("overlay"); if(!v || !c) return;
+        const rect=v.getBoundingClientRect();
+
+        const norm = (pts)=> pts.map(p=>({ x: p.x / v.videoWidth * rect.width, y: p.y / v.videoHeight * rect.height }));
+
+        const boxes = (result.boxes||[])
+          .filter(b => result.box ? b !== result.box : true)
+          .map(b => norm(b));
+
+        const line = result.line ? norm(result.line) : null;
+        drawBoxes(boxes, line);
       });
 
       Quagga.onDetected((data)=>{
         if(!data || !data.codeResult) return;
         const txt = data.codeResult.code;
         const fmt = getFormatNameQG(data.codeResult.format);
-        // Hindari spam duplikat sangat cepat
         if(txt && txt !== state.lastText){ onScan(txt, fmt); }
       });
+
     }catch(e){ reject(e); }
   });
 }
@@ -229,9 +270,9 @@ async function getGeo(){
   return new Promise((resolve)=>{
     if(!navigator.geolocation) return resolve(null);
     navigator.geolocation.getCurrentPosition(
-      pos=>resolve({lat:pos.coords.latitude,lng:pos.coords.longitude}),
+      pos=>resolve({lat:pos.coords.latitude, lng:pos.coords.longitude}),
       _=>resolve(null),
-      {enableHighAccuracy:true, timeout:3000}
+      { enableHighAccuracy:true, timeout:3000 }
     );
   });
 }
@@ -242,7 +283,7 @@ async function saveToSheets(txt, type){
     venue: $("venue")?.value.trim() || '',
     client_ts: new Date().toISOString(),
     data: txt,
-    data_type: type, // QR_CODE / CODE_128 / ...
+    data_type: type,
     ua: navigator.userAgent
   };
   const geo = await getGeo(); if(geo){ payload.lat=geo.lat; payload.lng=geo.lng }
@@ -254,7 +295,7 @@ async function saveToSheets(txt, type){
     if(res.ok && j && j.ok){ setStatus('保存しました','ok'); return; }
     throw new Error('fetch-not-ok');
   }catch(_){
-    await saveViaJSONP(payload); // no-CORS fallback
+    await saveViaJSONP(payload);
   }
 }
 
@@ -279,13 +320,12 @@ async function syncQueue(){
   setStatus('同期完了','ok');
 }
 
-// ---------- Dashboard ----------
+// ---------- dashboard ----------
 function ymd(d){ return d.toISOString().slice(0,10); }
 async function fetchStats(days){
   const end=new Date(); const start=new Date(); start.setDate(end.getDate()-(days-1));
   const qs=new URLSearchParams({stats:'1',start:ymd(start),end:ymd(end),group:'daily',_:(Date.now())});
-  const r=await fetch(`${ENDPOINT}?${qs.toString()}`,{method:'GET',cache:'no-store'});
-  return r.json();
+  const r=await fetch(`${ENDPOINT}?${qs.toString()}`,{method:'GET',cache:'no-store'}); return r.json();
 }
 function renderChart(labels,data){
   const ctx=$("trendChart").getContext('2d');
@@ -308,11 +348,9 @@ $("btnCopy").onclick=async()=>{ const t=$("result")?.textContent; if(!t||t==='�
 $("btnSync").onclick=syncQueue;
 $("rangeSelect").onchange=()=>refreshDashboard();
 $("btnDownload").onclick=()=>{ const days=parseInt(($("rangeSelect")?.value)||'30',10); const end=new Date(); const start=new Date(); start.setDate(end.getDate()-(days-1)); const qs=new URLSearchParams({download:'csv',start:ymd(start),end:ymd(end)}); window.open(`${ENDPOINT}?${qs.toString()}`,'_blank'); };
-
-// mode switch re-start
 $("mode1D").onchange=()=>{ stopCamera(); startCamera(); };
 
-// Auto-start
+// Auto-start mobile
 window.addEventListener('load',()=>{ (async()=>{
   setQueueBadge(); await listCameras(); try{ await refreshDashboard(); }catch(_){}
   if(isMobile){ startCamera(); }
