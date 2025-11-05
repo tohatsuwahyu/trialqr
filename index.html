@@ -26,6 +26,7 @@
     <!-- Scanner -->
     <section class="card p16 tilt">
       <h2 class="h2">スキャナー</h2>
+
       <div class="grid one">
         <div class="row gap12">
           <div class="flex1">
@@ -51,9 +52,14 @@
           </div>
         </div>
 
+        <!-- NEW: mode switch -->
+        <div class="row gap12">
+          <label class="row gap8 inline"><input type="checkbox" id="mode1D" /> 1D専用(高速) — Code128/39, EAN/UPC, ITF, Codabar</label>
+        </div>
+
         <video id="video" playsinline></video>
 
-        <!-- NEW: Torch + Zoom controls -->
+        <!-- Torch + Zoom -->
         <div class="row gap12">
           <button id="btnTorch" class="ghost" style="display:none">ライト ON</button>
           <div id="zoomWrap" class="row gap8" style="display:none;align-items:center">
@@ -114,11 +120,15 @@
     </section>
   </main>
 
-  <footer class="footer">ZXing + WebRTC で動作 / カメラ使用には <strong>HTTPS</strong> が必要です</footer>
+  <footer class="footer">ZXing(主にQR) + Quagga(1D) / カメラは <strong>HTTPS</strong> が必要です</footer>
 
+  <!-- Libraries -->
   <script src="https://unpkg.com/@zxing/library@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.2.6/dist/quagga.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script src="./assets/config.js?v=7"></script>
-  <script src="./assets/app.js?v=7" defer></script>
+
+  <!-- App -->
+  <script src="./assets/config.js?v=8"></script>
+  <script src="./assets/app.js?v=8" defer></script>
 </body>
 </html>
