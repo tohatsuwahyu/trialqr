@@ -2,17 +2,24 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>QR → Google Sheets</title>
-  <meta name="theme-color" content="#0ea5e9" />
+  <meta name="theme-color" content="#ffffff" />
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Noto+Sans+JP:wght@400;600&display=swap" rel="stylesheet">
+  <!-- Icons -->
   <link rel="icon" href="./assets/tsh.png" />
   <link rel="apple-touch-icon" href="./assets/tsh.png" />
+  <!-- Styles -->
   <link rel="stylesheet" href="./assets/style.css" />
 </head>
 <body>
   <header class="nav">
     <div class="nav__brand">
-      <img src="./assets/tsh.png" alt="logo" class="logo" />
+      <div class="logoWrap">
+        <img src="./assets/tsh.png" alt="logo" class="logo" />
+        <div class="glow"></div>
+      </div>
       <h1 class="title">QR → Google Sheets</h1>
     </div>
     <div class="nav__status">
@@ -22,7 +29,7 @@
   </header>
 
   <main class="wrap grid">
-    <section class="card p16">
+    <section class="card p16 tilt">
       <div class="grid one">
         <div class="row gap12">
           <div class="flex1">
@@ -60,7 +67,7 @@
       </div>
     </section>
 
-    <section class="card p16">
+    <section class="card p16 tilt">
       <div class="grid one">
         <div>
           <label>最新の読み取り</label>
@@ -83,8 +90,8 @@
   <!-- ZXing (CDN) -->
   <script src="https://unpkg.com/@zxing/library@latest"></script>
   <!-- 設定（ENDPOINT をここで指定） -->
-  <script src="./assets/config.js?v=3"></script>
+  <script src="./assets/config.js?v=4"></script>
   <!-- アプリ本体 -->
-  <script src="./assets/app.js?v=3" defer></script>
+  <script src="./assets/app.js?v=4" defer></script>
 </body>
 </html>
