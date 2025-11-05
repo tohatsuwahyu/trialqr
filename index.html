@@ -1,73 +1,90 @@
 <!doctype html>
-<label>展示会名 / コード</label>
-<input id="exhibition" placeholder="例: INDO-MFG 2025 / Booth B12" />
-</div>
-<div class="flex1">
-<label>場所 / エリア（任意）</label>
-<input id="venue" placeholder="例: Hall A / Jakarta" />
-</div>
-</div>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>QR → Google Sheets</title>
+  <meta name="theme-color" content="#0ea5e9" />
+  <link rel="icon" href="./assets/tsh.png" />
+  <link rel="apple-touch-icon" href="./assets/tsh.png" />
+  <link rel="stylesheet" href="./assets/style.css" />
+</head>
+<body>
+  <header class="nav">
+    <div class="nav__brand">
+      <img src="./assets/tsh.png" alt="logo" class="logo" />
+      <h1 class="title">QR → Google Sheets</h1>
+    </div>
+    <div class="nav__status">
+      <span id="statusBadge" class="badge">ステータス: <strong>待機中</strong></span>
+      <span id="queueBadge" class="badge">キュー: 0</span>
+    </div>
+  </header>
 
+  <main class="wrap grid">
+    <section class="card p16">
+      <div class="grid one">
+        <div class="row gap12">
+          <div class="flex1">
+            <label>展示会名 / コード</label>
+            <input id="exhibition" placeholder="例: INDO-MFG 2025 / Booth B12" />
+          </div>
+          <div class="flex1">
+            <label>場所 / エリア（任意）</label>
+            <input id="venue" placeholder="例: Hall A / Jakarta" />
+          </div>
+        </div>
 
-<div class="row gap12">
-<div class="flex2">
-<label>カメラ</label>
-<select id="cameraSelect"></select>
-</div>
-<div class="flex1 align-end">
-<button id="btnStart" class="primary">カメラ開始</button>
-</div>
-<div class="flex1 align-end">
-<button id="btnStop" class="ghost" disabled>停止</button>
-</div>
-</div>
+        <div class="row gap12">
+          <div class="flex2">
+            <label>カメラ</label>
+            <select id="cameraSelect"></select>
+          </div>
+          <div class="flex1 align-end">
+            <button id="btnStart" class="primary">カメラ開始</button>
+          </div>
+          <div class="flex1 align-end">
+            <button id="btnStop" class="ghost" disabled>停止</button>
+          </div>
+        </div>
 
+        <video id="video" playsinline></video>
+        <canvas id="canvas" class="hidden"></canvas>
 
-<video id="video" playsinline></video>
-<canvas id="canvas" class="hidden"></canvas>
+        <div class="row gap12">
+          <label class="row gap8 inline"><input type="checkbox" id="autoSave" checked /> 自動保存</label>
+          <label class="row gap8 inline"><input type="checkbox" id="vibrate" checked /> 成功時バイブ</label>
+          <button id="btnSave" disabled>手動保存</button>
+          <button id="btnSync" class="ghost">キュー同期</button>
+        </div>
+      </div>
+    </section>
 
+    <section class="card p16">
+      <div class="grid one">
+        <div>
+          <label>最新の読み取り</label>
+          <pre id="result">— まだありません —</pre>
+          <div class="row gap8">
+            <button id="btnCopy" class="ghost">コピー</button>
+            <span id="meta" class="badge">種類: -</span>
+          </div>
+        </div>
+        <div>
+          <label>セッション履歴</label>
+          <pre id="history">(空)</pre>
+        </div>
+      </div>
+    </section>
+  </main>
 
-<div class="row gap12">
-<label class="row gap8 inline"><input type="checkbox" id="autoSave" checked /> 自動保存</label>
-<label class="row gap8 inline"><input type="checkbox" id="vibrate" checked /> 成功時バイブ</label>
-<button id="btnSave" disabled>手動保存</button>
-<button id="btnSync" class="ghost">キュー同期</button>
-</div>
-</div>
-</section>
+  <footer class="footer">ZXing + WebRTC で動作 / カメラ使用には <strong>HTTPS</strong> が必要です</footer>
 
-
-<section class="card p16">
-<div class="grid one">
-<div>
-<label>最新の読み取り</label>
-<pre id="result">— まだありません —</pre>
-<div class="row gap8">
-<button id="btnCopy" class="ghost">コピー</button>
-<span id="meta" class="badge">種類: -</span>
-</div>
-</div>
-<div>
-<label>セッション履歴</label>
-<pre id="history">(空)</pre>
-</div>
-</div>
-</section>
-</main>
-
-
-<footer class="footer">ZXing + WebRTC で動作 / カメラ使用には <strong>HTTPS</strong> が必要です</footer>
-
-
-<!-- ZXing (CDN) -->
-<script src="https://unpkg.com/@zxing/library@latest"></script>
-<!-- sebelum -->
-<script src="./assets/config.js?v=2"></script>
-<script src="./assets/app.js?v=2" defer></script>
-
-<!-- sesudah -->
-<script src="./assets/config.js?v=3"></script>
-<script type="module" src="./assets/app.js?v=3"></script>
-
+  <!-- ZXing (CDN) -->
+  <script src="https://unpkg.com/@zxing/library@latest"></script>
+  <!-- 設定（ENDPOINT をここで指定） -->
+  <script src="./assets/config.js?v=3"></script>
+  <!-- アプリ本体 -->
+  <script src="./assets/app.js?v=3" defer></script>
 </body>
 </html>
