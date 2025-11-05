@@ -52,12 +52,16 @@
           </div>
         </div>
 
-        <!-- NEW: mode switch -->
+        <!-- Mode switch -->
         <div class="row gap12">
           <label class="row gap8 inline"><input type="checkbox" id="mode1D" /> 1D専用(高速) — Code128/39, EAN/UPC, ITF, Codabar</label>
         </div>
 
-        <video id="video" playsinline></video>
+        <!-- Video + overlay ROI -->
+        <div class="videoWrap" style="position:relative;border-radius:16px;overflow:hidden;">
+          <video id="video" playsinline style="display:block;width:100%;height:auto;background:#000"></video>
+          <canvas id="overlay" style="position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none"></canvas>
+        </div>
 
         <!-- Torch + Zoom -->
         <div class="row gap12">
@@ -128,7 +132,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
   <!-- App -->
-  <script src="./assets/config.js?v=8"></script>
-  <script src="./assets/app.js?v=8" defer></script>
+  <script src="./assets/config.js?v=9"></script>
+  <script src="./assets/app.js?v=9" defer></script>
 </body>
 </html>
