@@ -1,8 +1,8 @@
-// app.js (JP UI, light theme, mobile back camera + auto-start, no top-level await)
+// app.js (JP UI, light, mobile back camera + auto-start, CORS-safe POST, dashboard)
 const $ = (id) => document.getElementById(id);
 const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-const state = { stream:null, codeReader:null, lastText:null, scanning:false, queue: loadQueue() };
+const state = { stream:null, codeReader:null, lastText:null, scanning:false, queue: loadQueue(), chart:null };
 const ENDPOINT = (window.APP_CONFIG && window.APP_CONFIG.ENDPOINT) || "";
 
 function loadQueue(){ try{ return JSON.parse(localStorage.getItem("qr_queue")||"[]") }catch(e){ return [] } }
@@ -32,7 +32,6 @@ async function startCamera(){
 
   try{
     if(isMobile){
-      // Prefer exact back camera, fallback to ideal
       try {
         await startScanLoopWithConstraints({ video: { facingMode: { exact: 'environment' } } });
       } catch(_) {
@@ -63,11 +62,9 @@ async function startScanLoopWithConstraints(constraints){
   state.scanning = true;
   const codeReader = new ZXing.BrowserMultiFormatReader();
   state.codeReader = codeReader;
-  // getUserMedia for preview
   state.stream = await navigator.mediaDevices.getUserMedia(constraints);
   $("video").srcObject = state.stream;
   $("video").onloadedmetadata = ()=> $("video").play();
-  // ZXing decode based on constraints
   await codeReader.decodeFromConstraints(
     constraints, 'video',
     (res)=>{ if(res){ onScan(res.getText()) } }
@@ -106,6 +103,9 @@ async function onScan(txt){
 
   if($("autoSave").checked){ await saveToSheets(txt, meta.type) }
   if($("vibrate").checked && 'vibrate' in navigator){ navigator.vibrate(60) }
+
+  // refresh dashboard quickly after a scan
+  try { await refreshDashboard(); } catch(_) {}
 }
 
 async function getGeo(){
@@ -118,6 +118,7 @@ async function getGeo(){
   })
 }
 
+// ---- POST: use text/plain to avoid preflight CORS
 async function saveToSheets(txt, type){
   const payload = {
     exhibition: $("exhibition").value.trim() || '(名称なし)',
@@ -131,14 +132,18 @@ async function saveToSheets(txt, type){
 
   try{
     setStatus('保存中…');
-    const res = await fetch(ENDPOINT, { method:'POST', mode:'cors', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) })
-    if(!res.ok) throw new Error('HTTP '+res.status)
-    const j = await res.json()
-    if(j && j.ok){ setStatus('保存しました', 'ok') }
-    else throw new Error('レスポンス不正')
+    const res = await fetch(ENDPOINT, {
+      method:'POST',
+      headers:{ 'Content-Type':'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    });
+    const raw = await res.text();
+    let j=null; try{ j=JSON.parse(raw) }catch(_){}
+    if(res.ok && j && j.ok){ setStatus('保存しました', 'ok') }
+    else { console.warn('backend response', res.status, raw); throw new Error('レスポンス不正') }
   }catch(e){
-    console.warn('save failed, queued', e)
-    state.queue.push(payload); saveQueue(); setQueueBadge(); setStatus('オフライン — キューに追加', 'warn')
+    console.warn('save failed, queued', e);
+    state.queue.push(payload); saveQueue(); setQueueBadge(); setStatus('オフライン — キューに追加', 'warn');
   }
 }
 
@@ -148,11 +153,65 @@ async function syncQueue(){
   const batch = [...state.queue]
   for(const item of batch){
     try{
-      const r = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(item) })
+      const r = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify(item) })
       if(r.ok){ state.queue.shift(); saveQueue(); setQueueBadge() }
     }catch(_){ /* keep in queue */ }
   }
   setStatus('同期完了', 'ok')
+}
+
+// ---- Dashboard ----
+function ymd(d){ return d.toISOString().slice(0,10) }
+
+async function fetchStats(days){
+  const end = new Date();
+  const start = new Date(); start.setDate(end.getDate() - (days-1));
+  const qs = new URLSearchParams({ stats:'1', start: ymd(start), end: ymd(end), group:'daily' });
+  const r = await fetch(`${ENDPOINT}?${qs.toString()}`, { method:'GET' });
+  return r.json();
+}
+
+function renderChart(labels, data){
+  const ctx = $("trendChart").getContext('2d');
+  if(state.chart){ state.chart.destroy(); }
+  state.chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Leads',
+        data,
+        tension: 0.35,
+        borderWidth: 2,
+        pointRadius: 3,
+        fill: false
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: { beginAtZero: true, ticks:{ precision:0 } }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: { mode:'index', intersect:false }
+      }
+    }
+  });
+}
+
+async function refreshDashboard(){
+  const days = parseInt(($("rangeSelect")?.value)||'30',10);
+  const res = await fetchStats(days);
+  if(!res || !res.ok){ return; }
+
+  $("totalLeads").textContent  = res.total || 0;
+  $("uniqueLeads").textContent = res.unique || 0;
+
+  const labels = (res.series||[]).map(i=>i.date);
+  const data   = (res.series||[]).map(i=>i.count);
+  renderChart(labels, data);
 }
 
 $("btnStart").onclick = startCamera;
@@ -163,14 +222,25 @@ $("btnCopy").onclick = async ()=>{
   try{ await navigator.clipboard.writeText(t); setStatus('コピーしました', 'ok') }catch(_){ setStatus('コピー失敗', 'bad') }
 };
 $("btnSync").onclick = syncQueue;
+$("rangeSelect").onchange = ()=> refreshDashboard();
+$("btnDownload").onclick = ()=>{
+  const days = parseInt(($("rangeSelect")?.value)||'30',10);
+  const end = new Date();
+  const start = new Date(); start.setDate(end.getDate() - (days-1));
+  const qs = new URLSearchParams({ download:'csv', start: ymd(start), end: ymd(end) });
+  window.open(`${ENDPOINT}?${qs.toString()}`, '_blank');
+};
 
-// Auto-start: mobile always, desktop only if permission was already granted
+// Auto-start: mobile always, desktop only if permission was granted
 window.addEventListener('load', ()=>{
   (async ()=>{
     setQueueBadge();
     await listCameras();
+    // Dashboard load
+    try{ await refreshDashboard(); }catch(_){}
+
     if(isMobile){
-      startCamera(); // prompt & start immediately
+      startCamera();
     }else{
       try{
         if(navigator.permissions && navigator.permissions.query){
