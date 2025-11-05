@@ -1,4 +1,4 @@
-// app.js (JP UI, no top-level await, safe without badges)
+// app.js (JP UI, light theme, safe DOM access)
 const $ = (id) => document.getElementById(id);
 
 const state = { stream:null, codeReader:null, lastText:null, scanning:false, queue: loadQueue() };
@@ -7,16 +7,13 @@ const ENDPOINT = (window.APP_CONFIG && window.APP_CONFIG.ENDPOINT) || "";
 function loadQueue(){ try{ return JSON.parse(localStorage.getItem("qr_queue")||"[]") }catch(e){ return [] } }
 function saveQueue(){ localStorage.setItem("qr_queue", JSON.stringify(state.queue)) }
 
-// Safe: do nothing when badges don't exist
 function setStatus(text, cls){
-  const b = document.getElementById('statusBadge');
-  if (!b) return;
+  const b = $("statusBadge"); if(!b) return;
   b.innerHTML = `ステータス: <strong>${text}</strong>`;
   b.className = 'badge ' + (cls || '');
 }
 function setQueueBadge(){
-  const el = document.getElementById('queueBadge');
-  if (!el) return;
+  const el = $("queueBadge"); if(!el) return;
   el.innerText = 'キュー: ' + state.queue.length;
 }
 
@@ -81,7 +78,7 @@ async function onScan(txt){
   updateHistory(new Date().toLocaleString('ja-JP'), txt);
 
   if($("autoSave").checked){ await saveToSheets(txt, meta.type) }
-  if($("vibrate").checked && 'vibrate' in navigator){ navigator.vibrate(80) }
+  if($("vibrate").checked && 'vibrate' in navigator){ navigator.vibrate(60) }
 }
 
 async function getGeo(){
@@ -131,14 +128,14 @@ async function syncQueue(){
   setStatus('同期完了', 'ok')
 }
 
-$("btnStart").onclick = startCamera
-$("btnStop").onclick = stopCamera
-$("btnSave").onclick = ()=>{ const t=$("result").textContent; if(t&&t!=='— まだありません —') saveToSheets(t, detectType(t).type) }
+$("btnStart").onclick = startCamera;
+$("btnStop").onclick = stopCamera;
+$("btnSave").onclick = ()=>{ const t=$("result").textContent; if(t&&t!=='— まだありません —') saveToSheets(t, detectType(t).type) };
 $("btnCopy").onclick = async ()=>{
-  const t=$("result").textContent; if(!t||t==='— まだありません —') return
+  const t=$("result").textContent; if(!t||t==='— まだありません —') return;
   try{ await navigator.clipboard.writeText(t); setStatus('コピーしました', 'ok') }catch(_){ setStatus('コピー失敗', 'bad') }
-}
-$("btnSync").onclick = syncQueue
+};
+$("btnSync").onclick = syncQueue;
 
 window.addEventListener('load', ()=>{
   (async ()=>{
