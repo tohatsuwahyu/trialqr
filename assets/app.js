@@ -1,4 +1,4 @@
-// app.js (tanpa top-level await)
+// app.js (JP UI, no top-level await, safe without badges)
 const $ = (id) => document.getElementById(id);
 
 const state = { stream:null, codeReader:null, lastText:null, scanning:false, queue: loadQueue() };
@@ -6,8 +6,19 @@ const ENDPOINT = (window.APP_CONFIG && window.APP_CONFIG.ENDPOINT) || "";
 
 function loadQueue(){ try{ return JSON.parse(localStorage.getItem("qr_queue")||"[]") }catch(e){ return [] } }
 function saveQueue(){ localStorage.setItem("qr_queue", JSON.stringify(state.queue)) }
-function setStatus(text, cls){ const b=$("statusBadge"); b.innerHTML=`ステータス: <strong>${text}</strong>`; b.className='badge '+(cls||'') }
-function setQueueBadge(){ $("queueBadge").innerText = 'キュー: ' + state.queue.length }
+
+// Safe: do nothing when badges don't exist
+function setStatus(text, cls){
+  const b = document.getElementById('statusBadge');
+  if (!b) return;
+  b.innerHTML = `ステータス: <strong>${text}</strong>`;
+  b.className = 'badge ' + (cls || '');
+}
+function setQueueBadge(){
+  const el = document.getElementById('queueBadge');
+  if (!el) return;
+  el.innerText = 'キュー: ' + state.queue.length;
+}
 
 async function listCameras(){
   const devices = (await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput');
