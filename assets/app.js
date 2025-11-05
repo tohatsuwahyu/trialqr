@@ -1,5 +1,6 @@
-// app.js (JP UI, light theme, safe DOM access)
+// app.js (JP UI, light theme, mobile back camera + auto-start, no top-level await)
 const $ = (id) => document.getElementById(id);
+const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
 const state = { stream:null, codeReader:null, lastText:null, scanning:false, queue: loadQueue() };
 const ENDPOINT = (window.APP_CONFIG && window.APP_CONFIG.ENDPOINT) || "";
@@ -24,17 +25,30 @@ async function listCameras(){
   if(devices.length===0){ const o=document.createElement('option'); o.text='（カメラが見つかりません）'; sel.appendChild(o) }
 }
 
+// ---- startCamera: force back camera on mobile, fallback to deviceId on desktop
 async function startCamera(){
   stopCamera();
-  const deviceId = $("cameraSelect").value || undefined;
-  setStatus('カメラを起動中…');
-  const constraints = { video: deviceId?{deviceId:{exact:deviceId}}:{facingMode:'environment'} };
-  state.stream = await navigator.mediaDevices.getUserMedia(constraints);
-  $("video").srcObject = state.stream;
-  $("video").onloadedmetadata = ()=> $("video").play();
-  setStatus('スキャン準備OK', 'ok');
-  startScanLoop();
-  $("btnStart").disabled=true; $("btnStop").disabled=false;
+  setStatus(isMobile ? 'カメラ(背面)を起動中…' : 'カメラを起動中…');
+
+  try{
+    if(isMobile){
+      // Prefer exact back camera, fallback to ideal
+      try {
+        await startScanLoopWithConstraints({ video: { facingMode: { exact: 'environment' } } });
+      } catch(_) {
+        await startScanLoopWithConstraints({ video: { facingMode: 'environment' } });
+      }
+    }else{
+      const deviceId = $("cameraSelect").value || undefined;
+      await startScanLoopWithDevice(deviceId);
+    }
+    setStatus('スキャン準備OK', 'ok');
+    $("btnStart").disabled = true;
+    $("btnStop").disabled = false;
+  }catch(e){
+    console.error(e);
+    setStatus('カメラ起動に失敗', 'bad');
+  }
 }
 
 function stopCamera(){
@@ -45,15 +59,28 @@ function stopCamera(){
   setStatus('待機中');
 }
 
-async function startScanLoop(){
-  state.scanning=true;
+async function startScanLoopWithConstraints(constraints){
+  state.scanning = true;
   const codeReader = new ZXing.BrowserMultiFormatReader();
   state.codeReader = codeReader;
-  try{
-    await codeReader.decodeFromVideoDevice($("cameraSelect").value||undefined, 'video', (res)=>{
-      if(res){ onScan(res.getText()) }
-    })
-  }catch(e){ console.error(e); setStatus('スキャン失敗', 'bad') }
+  // getUserMedia for preview
+  state.stream = await navigator.mediaDevices.getUserMedia(constraints);
+  $("video").srcObject = state.stream;
+  $("video").onloadedmetadata = ()=> $("video").play();
+  // ZXing decode based on constraints
+  await codeReader.decodeFromConstraints(
+    constraints, 'video',
+    (res)=>{ if(res){ onScan(res.getText()) } }
+  );
+}
+async function startScanLoopWithDevice(deviceId){
+  state.scanning = true;
+  const codeReader = new ZXing.BrowserMultiFormatReader();
+  state.codeReader = codeReader;
+  await codeReader.decodeFromVideoDevice(
+    deviceId || undefined, 'video',
+    (res)=>{ if(res){ onScan(res.getText()) } }
+  );
 }
 
 function detectType(txt){
@@ -137,15 +164,20 @@ $("btnCopy").onclick = async ()=>{
 };
 $("btnSync").onclick = syncQueue;
 
+// Auto-start: mobile always, desktop only if permission was already granted
 window.addEventListener('load', ()=>{
   (async ()=>{
     setQueueBadge();
     await listCameras();
-    try{
-      if(navigator.permissions && navigator.permissions.query){
-        const p = await navigator.permissions.query({name:'camera'});
-        if(p.state==='granted'){ startCamera(); }
-      }
-    }catch(_){}
+    if(isMobile){
+      startCamera(); // prompt & start immediately
+    }else{
+      try{
+        if(navigator.permissions && navigator.permissions.query){
+          const p = await navigator.permissions.query({name:'camera'});
+          if(p.state==='granted'){ startCamera(); }
+        }
+      }catch(_){}
+    }
   })();
 });
