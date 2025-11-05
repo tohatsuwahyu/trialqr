@@ -5,21 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>QR → Google Sheets</title>
   <meta name="theme-color" content="#ffffff" />
-  <!-- Fonts -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Noto+Sans+JP:wght@400;600&display=swap" rel="stylesheet">
-  <!-- Icons -->
   <link rel="icon" href="./assets/tsh.png" />
   <link rel="apple-touch-icon" href="./assets/tsh.png" />
-  <!-- Styles -->
   <link rel="stylesheet" href="./assets/style.css" />
 </head>
 <body>
   <header class="nav">
     <div class="nav__brand">
-      <div class="logoWrap">
-        <img src="./assets/tsh.png" alt="logo" class="logo" />
-        <div class="glow"></div>
-      </div>
+      <div class="logoWrap"><img src="./assets/tsh.png" alt="logo" class="logo" /><div class="glow"></div></div>
       <h1 class="title">QR → Google Sheets</h1>
     </div>
     <div class="nav__status">
@@ -58,6 +52,16 @@
         </div>
 
         <video id="video" playsinline></video>
+
+        <!-- NEW: Torch + Zoom controls -->
+        <div class="row gap12">
+          <button id="btnTorch" class="ghost" style="display:none">ライト ON</button>
+          <div id="zoomWrap" class="row gap8" style="display:none;align-items:center">
+            <label style="min-width:40px;color:#6b7280">ズーム</label>
+            <input id="zoomSlider" type="range" min="1" max="1" step="0.1" value="1" style="width:160px" />
+          </div>
+        </div>
+
         <canvas id="canvas" class="hidden"></canvas>
 
         <div class="row gap12">
@@ -102,31 +106,19 @@
       </div>
 
       <div class="stats">
-        <div class="stat">
-          <div class="stat-num" id="totalLeads">0</div>
-          <div class="stat-label">合計リード</div>
-        </div>
-        <div class="stat">
-          <div class="stat-num" id="uniqueLeads">0</div>
-          <div class="stat-label">ユニークリード</div>
-        </div>
+        <div class="stat"><div class="stat-num" id="totalLeads">0</div><div class="stat-label">合計リード</div></div>
+        <div class="stat"><div class="stat-num" id="uniqueLeads">0</div><div class="stat-label">ユニークリード</div></div>
       </div>
 
-      <div class="chartWrap">
-        <canvas id="trendChart" height="120"></canvas>
-      </div>
+      <div class="chartWrap"><canvas id="trendChart" height="120"></canvas></div>
     </section>
   </main>
 
   <footer class="footer">ZXing + WebRTC で動作 / カメラ使用には <strong>HTTPS</strong> が必要です</footer>
 
-  <!-- ZXing (CDN) -->
   <script src="https://unpkg.com/@zxing/library@latest"></script>
-  <!-- Chart.js (for dashboard) -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <!-- 設定（ENDPOINT をここで指定） -->
-  <script src="./assets/config.js?v=6"></script>
-  <!-- アプリ本体 -->
-  <script src="./assets/app.js?v=6" defer></script>
+  <script src="./assets/config.js?v=7"></script>
+  <script src="./assets/app.js?v=7" defer></script>
 </body>
 </html>
