@@ -1,4 +1,4 @@
-// app.js — fast camera start, autofocus/torch/zoom, QR + 1D barcodes, dashboard, JSONP fallback
+// app.js — ZXing (QR), Quagga2 (1D), fast camera start, torch/zoom, dashboard, JSONP fallback
 
 const $ = (id) => document.getElementById(id);
 const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
@@ -6,21 +6,22 @@ const ENDPOINT = (window.APP_CONFIG && window.APP_CONFIG.ENDPOINT) || "";
 
 const state = {
   stream: null,
-  codeReader: null,
+  codeReader: null,   // ZXing
+  usingQuagga: false, // 1D mode
   lastText: null,
   scanning: false,
   queue: loadQueue(),
   chart: null
 };
 
-// ---------- queue helpers ----------
+// ---------- queue & ui ----------
 function loadQueue(){ try{ return JSON.parse(localStorage.getItem("qr_queue")||"[]") }catch(e){ return [] } }
 function saveQueue(){ localStorage.setItem("qr_queue", JSON.stringify(state.queue)) }
 function setStatus(text, cls){ const b=$("statusBadge"); if(!b) return; b.innerHTML=`ステータス: <strong>${text}</strong>`; b.className='badge '+(cls||''); }
 function setQueueBadge(){ const el=$("queueBadge"); if(!el) return; el.innerText='キュー: '+state.queue.length; }
 
-// ---------- ZXing formats & hints (QR + 1D) ----------
-const BARCODE_FORMATS = [
+// ---------- ZXing (QR + can 1D) ----------
+const ZX_FORMATS = [
   ZXing.BarcodeFormat.QR_CODE,
   ZXing.BarcodeFormat.CODE_128,
   ZXing.BarcodeFormat.CODE_39,
@@ -32,18 +33,21 @@ const BARCODE_FORMATS = [
   ZXing.BarcodeFormat.ITF,
   ZXing.BarcodeFormat.CODABAR
 ];
-function makeHints(){ const h=new Map(); h.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,BARCODE_FORMATS); h.set(ZXing.DecodeHintType.TRY_HARDER,true); return h; }
+function zxHints(){ const h=new Map(); h.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, ZX_FORMATS); h.set(ZXing.DecodeHintType.TRY_HARDER,true); return h; }
+function getFormatNameZX(res){ try{ if(res.getBarcodeFormat) return String(res.getBarcodeFormat()); }catch(_){ } return 'UNKNOWN'; }
 
-// ---------- camera device list ----------
-async function listCameras(){
-  const devices = (await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput');
-  const sel = $("cameraSelect"); if(!sel) return;
-  sel.innerHTML='';
-  devices.forEach((d,i)=>{ const o=document.createElement('option'); o.value=d.deviceId; o.text=d.label||`カメラ ${i+1}`; sel.appendChild(o) });
-  if(devices.length===0){ const o=document.createElement('option'); o.text='（カメラが見つかりません）'; sel.appendChild(o) }
+// ---------- Quagga (1D only) ----------
+const QG_READERS = [
+  "code_128_reader","code_39_reader","code_39_vin_reader","code_93_reader",
+  "ean_reader","ean_8_reader","upc_reader","upc_e_reader",
+  "i2of5_reader","codabar_reader"
+];
+function getFormatNameQG(name){
+  // normalize to upper-case-ish
+  return (name||'').toUpperCase().replace('_READER','').replace('I2OF5','ITF').replace('EAN','EAN_').replace('UPC','UPC_');
 }
 
-// ---------- fast constraints & pipeline ----------
+// ---------- constraints & camera ----------
 const BASE_CONSTRAINTS_ENV = {
   video: {
     facingMode: { ideal: 'environment' },
@@ -53,23 +57,41 @@ const BASE_CONSTRAINTS_ENV = {
   }
 };
 
+async function listCameras(){
+  const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput');
+  const sel = $("cameraSelect"); if(!sel) return;
+  sel.innerHTML='';
+  devs.forEach((d,i)=>{ const o=document.createElement('option'); o.value=d.deviceId; o.text=d.label||`カメラ ${i+1}`; sel.appendChild(o) });
+  if(devs.length===0){ const o=document.createElement('option'); o.text='（カメラが見つかりません）'; sel.appendChild(o) }
+}
+
 async function startCamera(){
   stopCamera();
   setStatus(isMobile ? 'カメラ(背面)を起動中…' : 'カメラを起動中…');
+
+  const use1D = $("mode1D")?.checked;
+  state.usingQuagga = !!use1D;
+
   try{
-    if(isMobile){
-      try {
-        await startScanLoopWithConstraints({ video: { ...BASE_CONSTRAINTS_ENV.video, facingMode:{ exact:'environment' } } });
-      } catch(_) {
-        await startScanLoopWithConstraints(BASE_CONSTRAINTS_ENV);
-      }
+    if(use1D){
+      // Quagga owns the stream internally
+      await startQuagga();
     }else{
-      const deviceId = $("cameraSelect")?.value || undefined;
-      await startScanLoopWithDevice(deviceId);
+      // ZXing path (good for QR, also tries 1D)
+      if(isMobile){
+        try {
+          await startZXingWithConstraints({ video: { ...BASE_CONSTRAINTS_ENV.video, facingMode:{ exact:'environment' } } });
+        } catch(_) {
+          await startZXingWithConstraints(BASE_CONSTRAINTS_ENV);
+        }
+      }else{
+        const deviceId = $("cameraSelect")?.value || undefined;
+        await startZXingWithDevice(deviceId);
+      }
+      await tuneTrackCapabilities(); // torch/zoom/autofocus for ZXing stream
     }
-    await tuneTrackCapabilities(); // autofocus / torch / zoom if available
     setStatus('スキャン準備OK','ok');
-    $("btnStart").disabled=true; $("btnStop").disabled=false;
+    $("btnStart").disabled = true; $("btnStop").disabled = false;
   }catch(e){
     console.error(e);
     setStatus('カメラ起動に失敗','bad');
@@ -77,57 +99,51 @@ async function startCamera(){
 }
 
 function stopCamera(){
-  if(state.stream){ state.stream.getTracks().forEach(t=>t.stop()); state.stream=null }
-  if(state.scanning && state.codeReader){ try{ state.codeReader.reset() }catch(_){} }
-  state.scanning=false;
+  if(state.usingQuagga){ try{ Quagga.stop(); }catch(_){ } }
+  if(state.stream){ try{ state.stream.getTracks().forEach(t=>t.stop()); }catch(_){ } state.stream=null; }
+  if(state.scanning && state.codeReader){ try{ state.codeReader.reset(); }catch(_){ } }
+  state.scanning=false; state.usingQuagga=false;
   $("btnStart").disabled=false; $("btnStop").disabled=true;
-  $("btnTorch").style.display='none';
-  $("zoomWrap").style.display='none';
+  $("btnTorch").style.display='none'; $("zoomWrap").style.display='none';
   setStatus('待機中');
 }
 
-async function startScanLoopWithConstraints(constraints){
-  state.scanning=true;
-  const reader = new ZXing.BrowserMultiFormatReader(makeHints());
+// ---- ZXing pipelines ----
+async function startZXingWithConstraints(constraints){
+  state.scanning = true;
+  const reader = new ZXing.BrowserMultiFormatReader(zxHints());
   state.codeReader = reader;
 
   state.stream = await navigator.mediaDevices.getUserMedia(constraints);
   const video = $("video");
-  if(video){ video.srcObject = state.stream; video.playsInline = true; if(video.paused) video.play().catch(()=>{}); }
+  if(video){ video.srcObject=state.stream; video.playsInline=true; if(video.paused) video.play().catch(()=>{}); }
 
-  await reader.decodeFromConstraints(constraints,'video',(res)=>{ if(res){ onScan(res.getText(), getFormatName(res)); } });
+  await reader.decodeFromConstraints(constraints, 'video', (res)=>{
+    if(res){ onScan(res.getText(), getFormatNameZX(res)); }
+  });
 }
 
-async function startScanLoopWithDevice(deviceId){
-  state.scanning=true;
-  const reader = new ZXing.BrowserMultiFormatReader(makeHints());
+async function startZXingWithDevice(deviceId){
+  state.scanning = true;
+  const reader = new ZXing.BrowserMultiFormatReader(zxHints());
   state.codeReader = reader;
 
   await reader.decodeFromVideoDevice(
-    deviceId || undefined,
-    'video',
-    (res)=>{ if(res){ onScan(res.getText(), getFormatName(res)); } },
-    { video:{
-        deviceId: deviceId ? { exact: deviceId } : undefined,
-        width:{ ideal:1280 }, height:{ ideal:720 }, frameRate:{ ideal:30, max:30 }
-      } }
+    deviceId || undefined, 'video',
+    (res)=>{ if(res){ onScan(res.getText(), getFormatNameZX(res)); } },
+    { video:{ deviceId: deviceId ? { exact: deviceId } : undefined, width:{ideal:1280}, height:{ideal:720}, frameRate:{ideal:30,max:30} } }
   );
 }
 
-// autofocus / torch / zoom if device supports
+// Torch/Zoom/AF (ZXing path only)
 async function tuneTrackCapabilities(){
   if(!state.stream) return;
   const track = state.stream.getVideoTracks()[0]; if(!track) return;
+  const caps = track.getCapabilities?.() || {}, settings = track.getSettings?.() || {};
 
-  const caps = track.getCapabilities?.() || {};
-  const settings = track.getSettings?.() || {};
-
-  // Continuous autofocus
   if(caps.focusMode && caps.focusMode.includes('continuous')){
     try{ await track.applyConstraints({ advanced:[{ focusMode:'continuous' }] }); }catch(_){}
   }
-
-  // Zoom slider
   if(typeof caps.zoom === 'number' || (caps.zoom && typeof caps.zoom.min === 'number')){
     const min=caps.zoom.min ?? 1, max=caps.zoom.max ?? 1, step=caps.zoom.step ?? 0.1;
     const wrap=$("zoomWrap"), slider=$("zoomSlider");
@@ -138,27 +154,55 @@ async function tuneTrackCapabilities(){
       slider.oninput = async (e)=>{ try{ await track.applyConstraints({ advanced:[{ zoom:Number(e.target.value) }] }); }catch(_){ } };
     }
   }
-
-  // Torch button
   if('torch' in caps){
     const btn=$("btnTorch");
     if(btn){
       btn.style.display='inline-flex';
       let on=false;
-      const setTorch = async (x)=>{
-        try{ await track.applyConstraints({ advanced:[{ torch:x }] }); on=x; btn.textContent = on? 'ライト OFF' : 'ライト ON'; }catch(_){}
-      };
+      const setTorch = async (x)=>{ try{ await track.applyConstraints({ advanced:[{ torch:x }] }); on=x; btn.textContent = on?'ライト OFF':'ライト ON'; }catch(_){ } };
       btn.onclick = ()=> setTorch(!on);
     }
   }
 }
 
-// ---------- scanning ----------
-function getFormatName(res){
-  try{ if(res.getBarcodeFormat) return String(res.getBarcodeFormat()); }catch(_){}
-  return 'UNKNOWN';
+// ---- Quagga pipelines (1D専用) ----
+async function startQuagga(){
+  return new Promise((resolve, reject)=>{
+    try{
+      Quagga.init({
+        inputStream: {
+          type: "LiveStream",
+          target: $("video"), // gunakan elemen video kita
+          constraints: {
+            facingMode: "environment",
+            width:  { ideal: 1280 },
+            height: { ideal: 720  }
+          }
+        },
+        locator: { patchSize: "medium", halfSample: true },
+        numOfWorkers: navigator.hardwareConcurrency ? Math.max(1, Math.min(4, navigator.hardwareConcurrency-1)) : 2,
+        frequency: 10,
+        decodeBarcodes: true,
+        decoder: { readers: QG_READERS }
+      }, async (err)=>{
+        if(err){ console.error(err); reject(err); return; }
+        state.usingQuagga = true;
+        Quagga.start();
+        setTimeout(resolve, 100); // beri waktu start
+      });
+
+      Quagga.onDetected((data)=>{
+        if(!data || !data.codeResult) return;
+        const txt = data.codeResult.code;
+        const fmt = getFormatNameQG(data.codeResult.format);
+        // Hindari spam duplikat sangat cepat
+        if(txt && txt !== state.lastText){ onScan(txt, fmt); }
+      });
+    }catch(e){ reject(e); }
+  });
 }
 
+// ---------- scan handling ----------
 function updateHistory(now, txt){
   const h=$("history"); if(!h) return;
   const cur = h.textContent.trim()==='(空)'?[]:h.textContent.split('\n');
@@ -174,8 +218,8 @@ async function onScan(txt, formatName){
   $("meta").textContent   = '種類: ' + (formatName || 'UNKNOWN');
   updateHistory(new Date().toLocaleString('ja-JP'), txt);
 
-  if($("autoSave")?.checked){ await saveToSheets(txt, formatName || 'UNKNOWN') }
-  if($("vibrate")?.checked && 'vibrate' in navigator){ navigator.vibrate(60) }
+  if($("autoSave")?.checked){ await saveToSheets(txt, formatName || 'UNKNOWN'); }
+  if($("vibrate")?.checked && 'vibrate' in navigator){ navigator.vibrate(60); }
 
   try{ await refreshDashboard(); }catch(_){}
 }
@@ -203,32 +247,24 @@ async function saveToSheets(txt, type){
   };
   const geo = await getGeo(); if(geo){ payload.lat=geo.lat; payload.lng=geo.lng }
 
-  // Try normal POST (will fail if CORS blocked)
   try{
     setStatus('保存中…');
-    const res = await fetch(ENDPOINT, {
-      method:'POST',
-      headers:{ 'Content-Type':'text/plain;charset=utf-8' },
-      body: JSON.stringify(payload)
-    });
+    const res = await fetch(ENDPOINT, { method:'POST', headers:{ 'Content-Type':'text/plain;charset=utf-8' }, body: JSON.stringify(payload) });
     const raw = await res.text(); let j=null; try{ j=JSON.parse(raw) }catch(_){}
     if(res.ok && j && j.ok){ setStatus('保存しました','ok'); return; }
     throw new Error('fetch-not-ok');
   }catch(_){
-    // Fallback JSONP (no CORS)
-    await saveViaJSONP(payload);
+    await saveViaJSONP(payload); // no-CORS fallback
   }
 }
 
 function saveViaJSONP(payload){
   return new Promise((resolve)=>{
-    const cbName='__qr_cb_'+Date.now();
-    window[cbName]=(resp)=>{ try{ delete window[cbName]; }catch(_){ } setStatus(resp&&resp.ok?'保存しました(JSONP)':'保存失敗(JSONP)', resp&&resp.ok?'ok':'bad'); resolve(); };
-    const src=`${ENDPOINT}?mode=jsonp&cb=${cbName}&payload=${encodeURIComponent(JSON.stringify(payload))}`;
-    const s=document.createElement('script'); s.src=src; s.async=true;
-    s.onerror=()=>{ setStatus('JSONP送信エラー','bad'); resolve(); };
-    document.body.appendChild(s);
-    setTimeout(()=>{ try{ document.body.removeChild(s); }catch(_){} },10000);
+    const cb='__qr_cb_'+Date.now();
+    window[cb]=(resp)=>{ try{ delete window[cb]; }catch(_){ } setStatus(resp&&resp.ok?'保存しました(JSONP)':'保存失敗(JSONP)', resp&&resp.ok?'ok':'bad'); resolve(); };
+    const src=`${ENDPOINT}?mode=jsonp&cb=${cb}&payload=${encodeURIComponent(JSON.stringify(payload))}`;
+    const s=document.createElement('script'); s.src=src; s.async=true; s.onerror=()=>{ setStatus('JSONP送信エラー','bad'); resolve(); };
+    document.body.appendChild(s); setTimeout(()=>{ try{ document.body.removeChild(s); }catch(_){ } },10000);
   });
 }
 
@@ -237,20 +273,19 @@ async function syncQueue(){
   setStatus('同期中…');
   const batch=[...state.queue];
   for(const item of batch){
-    try{
-      const r=await fetch(ENDPOINT,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(item)});
-      if(r.ok){ state.queue.shift(); saveQueue(); setQueueBadge(); }
-    }catch(_){ /* keep */ }
+    try{ const r=await fetch(ENDPOINT,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(item)}); if(r.ok){ state.queue.shift(); saveQueue(); setQueueBadge(); } }
+    catch(_){ }
   }
   setStatus('同期完了','ok');
 }
 
-// ---------- dashboard ----------
+// ---------- Dashboard ----------
 function ymd(d){ return d.toISOString().slice(0,10); }
 async function fetchStats(days){
   const end=new Date(); const start=new Date(); start.setDate(end.getDate()-(days-1));
   const qs=new URLSearchParams({stats:'1',start:ymd(start),end:ymd(end),group:'daily',_:(Date.now())});
-  const r=await fetch(`${ENDPOINT}?${qs.toString()}`,{method:'GET',cache:'no-store'}); return r.json();
+  const r=await fetch(`${ENDPOINT}?${qs.toString()}`,{method:'GET',cache:'no-store'});
+  return r.json();
 }
 function renderChart(labels,data){
   const ctx=$("trendChart").getContext('2d');
@@ -274,11 +309,11 @@ $("btnSync").onclick=syncQueue;
 $("rangeSelect").onchange=()=>refreshDashboard();
 $("btnDownload").onclick=()=>{ const days=parseInt(($("rangeSelect")?.value)||'30',10); const end=new Date(); const start=new Date(); start.setDate(end.getDate()-(days-1)); const qs=new URLSearchParams({download:'csv',start:ymd(start),end:ymd(end)}); window.open(`${ENDPOINT}?${qs.toString()}`,'_blank'); };
 
+// mode switch re-start
+$("mode1D").onchange=()=>{ stopCamera(); startCamera(); };
+
 // Auto-start
 window.addEventListener('load',()=>{ (async()=>{
   setQueueBadge(); await listCameras(); try{ await refreshDashboard(); }catch(_){}
   if(isMobile){ startCamera(); }
-  else{
-    try{ if(navigator.permissions && navigator.permissions.query){ const p=await navigator.permissions.query({name:'camera'}); if(p.state==='granted'){ startCamera(); } } }catch(_){}
-  }
 })();});
