@@ -29,7 +29,9 @@
   </header>
 
   <main class="wrap grid">
+    <!-- Scanner -->
     <section class="card p16 tilt">
+      <h2 class="h2">スキャナー</h2>
       <div class="grid one">
         <div class="row gap12">
           <div class="flex1">
@@ -67,6 +69,7 @@
       </div>
     </section>
 
+    <!-- Latest -->
     <section class="card p16 tilt">
       <div class="grid one">
         <div>
@@ -83,15 +86,47 @@
         </div>
       </div>
     </section>
+
+    <!-- Dashboard -->
+    <section class="card p16 tilt">
+      <div class="dash-head">
+        <h2 class="h2">ダッシュボード</h2>
+        <div class="dash-actions">
+          <select id="rangeSelect">
+            <option value="7">直近 7 日</option>
+            <option value="14">直近 14 日</option>
+            <option value="30" selected>直近 30 日</option>
+          </select>
+          <button id="btnDownload" class="success">ダウンロード (CSV)</button>
+        </div>
+      </div>
+
+      <div class="stats">
+        <div class="stat">
+          <div class="stat-num" id="totalLeads">0</div>
+          <div class="stat-label">合計リード</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num" id="uniqueLeads">0</div>
+          <div class="stat-label">ユニークリード</div>
+        </div>
+      </div>
+
+      <div class="chartWrap">
+        <canvas id="trendChart" height="120"></canvas>
+      </div>
+    </section>
   </main>
 
   <footer class="footer">ZXing + WebRTC で動作 / カメラ使用には <strong>HTTPS</strong> が必要です</footer>
 
   <!-- ZXing (CDN) -->
   <script src="https://unpkg.com/@zxing/library@latest"></script>
+  <!-- Chart.js (for dashboard) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <!-- 設定（ENDPOINT をここで指定） -->
-  <script src="./assets/config.js?v=4"></script>
+  <script src="./assets/config.js?v=6"></script>
   <!-- アプリ本体 -->
-  <script src="./assets/app.js?v=4" defer></script>
+  <script src="./assets/app.js?v=6" defer></script>
 </body>
 </html>
