@@ -45,10 +45,8 @@ body{
 
 /* LAYOUT */
 .wrap{max-width:1100px;margin:0 auto;padding:18px}
-.card{
-  background:var(--card); border:1px solid var(--border); border-radius:18px;
-  box-shadow: var(--shadow);
-}
+.h2{margin:0 0 10px 0; font-size:18px}
+.card{background:var(--card); border:1px solid var(--border); border-radius:18px; box-shadow: var(--shadow)}
 .p16{padding:16px}
 .grid{display:grid;gap:16px}
 .grid.one{grid-template-columns:1fr}
@@ -64,6 +62,7 @@ button{cursor:pointer;transition:.18s ease; font-weight:600}
 button.primary{background:var(--accent); color:#fff}
 button.primary:hover{filter:brightness(1.05); transform:translateY(-1px)}
 button.ghost{background:#fff}
+button.success{background:#22c55e; color:#fff; border:1px solid #16a34a}
 .row{display:flex;gap:8px;align-items:center}
 .inline{width:auto}
 .gap8{gap:8px}.gap12{gap:12px}
@@ -79,7 +78,7 @@ video{
   box-shadow: var(--shadow);
 }
 
-/* Tilt card (subtle 3D on hover) */
+/* Tilt card */
 .tilt{transform-style:preserve-3d; transition:transform .25s ease}
 .tilt:hover{transform: perspective(900px) rotateX(2deg) rotateY(-2deg) translateY(-2px)}
 
@@ -90,10 +89,20 @@ pre{
 .footer{font-size:12px;color:var(--muted);padding:16px;text-align:center}
 .hidden{display:none}
 
+/* Dashboard */
+.dash-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.dash-actions{display:flex;gap:8px;align-items:center}
+.stats{display:grid;grid-template-columns:repeat(2,1fr); gap:12px; margin-bottom:12px}
+.stat{border:1px solid var(--border);border-radius:14px;padding:12px;background:#fff;box-shadow:var(--shadow)}
+.stat-num{font-size:28px;font-weight:700}
+.stat-label{color:var(--muted);font-size:12px}
+.chartWrap{background:#fff;border:1px solid var(--border);border-radius:14px;padding:10px}
+
 /* Mobile sizing */
 @media (max-width:640px){
   .wrap{padding:12px}
   input,select,button{padding:12px}
   .title{font-size:18px}
   pre{font-size:13px}
+  .stats{grid-template-columns:1fr}
 }
